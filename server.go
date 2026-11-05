@@ -1,48 +1,31 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
-	"os/exec"
 	"strings"
 	"time"
 )
 
 const maxRequestBytes = 1 << 20
 
-// Each agent reads the prompt from stdin, so prompt text can never be parsed as a CLI flag.
-var defaultAgentCommands = map[string][]string{
-	"claude": {"claude", "-p"},
-	"codex":  {"codex", "exec", "--skip-git-repo-check", "-"},
-	// gemini treats an empty -p as "no prompt"; a blank one enables headless mode and is appended to stdin.
-	"gemini": {"gemini", "--skip-trust", "-p", " "},
-}
-
-func agentCommandFor(agentName string) ([]string, error) {
-	command, isKnownAgent := defaultAgentCommands[agentName]
-	if !isKnownAgent {
-		return nil, fmt.Errorf("AGENT must be one of claude, codex, gemini; got %q", agentName)
-	}
-	return command, nil
-}
-
 type server struct {
-	token        string
-	agentCommand []string
-	timeout      time.Duration
+	token    string
+	sessions *sessionManager
+	timeout  time.Duration
 }
 
 type askRequest struct {
-	Prompt string `json:"prompt"`
+	SessionID string `json:"session_id,omitempty"`
+	Prompt    string `json:"prompt"`
 }
 
 type askResponse struct {
-	Output string `json:"output"`
+	SessionID string `json:"session_id"`
+	Output    string `json:"output"`
 }
 
 func (s *server) routes() http.Handler {
@@ -68,29 +51,38 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deriving from the request context also stops the agent when the client disconnects.
+	// Deriving from the request context also stops the turn when the client disconnects.
 	ctx, cancel := context.WithTimeout(r.Context(), s.timeout)
 	defer cancel()
 
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, s.agentCommand[0], s.agentCommand[1:]...)
-	cmd.Stdin = strings.NewReader(req.Prompt)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	// Agent CLIs may spawn children that keep the pipes open after the parent is killed.
-	cmd.WaitDelay = 2 * time.Second
-
-	err = cmd.Run()
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		writeError(w, http.StatusGatewayTimeout, "agent timed out after "+s.timeout.String())
-		return
+	var agentSession *session
+	if req.SessionID == "" {
+		agentSession, err = s.sessions.create(ctx)
+	} else {
+		agentSession, err = s.sessions.find(req.SessionID)
 	}
 	if err != nil {
-		writeError(w, http.StatusBadGateway, "agent failed: "+err.Error()+": "+strings.TrimSpace(stderr.String()))
+		writeAgentError(w, ctx, err)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, askResponse{Output: strings.TrimSpace(stdout.String())})
+	output, err := s.sessions.ask(ctx, agentSession, req.Prompt)
+	if err != nil {
+		writeAgentError(w, ctx, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, askResponse{SessionID: agentSession.id, Output: strings.TrimSpace(output)})
+}
+
+func writeAgentError(w http.ResponseWriter, ctx context.Context, err error) {
+	switch {
+	case errors.Is(err, errSessionNotFound):
+		writeError(w, http.StatusNotFound, err.Error())
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout, "agent timed out; the session was closed")
+	default:
+		writeError(w, http.StatusBadGateway, "agent failed: "+err.Error())
+	}
 }
 
 func (s *server) isAuthorized(r *http.Request) bool {

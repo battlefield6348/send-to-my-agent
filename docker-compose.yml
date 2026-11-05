@@ -1,0 +1,16 @@
+# Local testing. AGENT in .env picks which agent this container runs (claude, codex or gemini).
+# Secrets live in .env and ./secrets, both git-ignored.
+services:
+  agent-api:
+    build: .
+    image: send-to-my-agent
+    ports:
+      - "8080:8080"
+    environment:
+      AGENT: ${AGENT:?set AGENT in .env (claude, codex or gemini)}
+      API_TOKEN: ${API_TOKEN:?set API_TOKEN in .env}
+      IDLE_TIMEOUT: ${IDLE_TIMEOUT:-10m}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    volumes:
+      - ./skills:/skills:ro
+      - ./secrets:/secrets

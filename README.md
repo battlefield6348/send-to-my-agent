@@ -1,36 +1,34 @@
 # send-to-my-agent
 
-把文字透過 HTTP API 交給一個 AI agent CLI（Claude Code、Codex 或 Gemini CLI）處理，並回傳 agent 的回覆。每個服務實例（容器）綁定一個 agent。
+把文字透過 HTTP API 交給一個 AI agent CLI（Claude Code、Codex 或 Gemini CLI）處理，並回傳 agent 的回覆。Image 內含三個 CLI，啟動時以 `AGENT` 環境變數決定使用哪一個。
 
-## 以容器執行
+## 以 Docker Compose 執行
 
-建置時以 `AGENT` 指定要安裝的 agent（`claude`、`codex`、`gemini`）：
+1. 建立 `.env`：
 
-```sh
-docker build --build-arg AGENT=claude -t send-to-my-agent:claude .
-```
+   ```sh
+   AGENT=claude            # claude、codex、gemini 擇一
+   API_TOKEN=請換成隨機長字串
+   IDLE_TIMEOUT=10m        # 選填，session 閒置多久後關閉，預設 10m
+   GEMINI_API_KEY=         # AGENT=gemini 時填入
+   ```
 
-啟動時提供 API token、agent 憑證，並可掛載 skills 資料夾：
+2. 依 `AGENT` 放入對應的登入憑證（建議使用複本，CLI 更新 token 時會寫回該檔）：
 
-```sh
-docker run -d -p 8080:8080 \
-  -e API_TOKEN=請換成隨機長字串 \
-  -e ANTHROPIC_API_KEY=... \
-  -v ./skills:/skills:ro \
-  send-to-my-agent:claude
-```
+   ```sh
+   mkdir -p secrets && chmod 700 secrets
+   cp ~/.claude/.credentials.json secrets/claude-credentials.json   # AGENT=claude
+   cp ~/.codex/auth.json secrets/codex-auth.json                    # AGENT=codex
+   chmod 600 secrets/*
+   ```
 
-| Agent | 憑證（擇一） |
-| --- | --- |
-| claude | `-e ANTHROPIC_API_KEY=...`、`-e CLAUDE_CODE_OAUTH_TOKEN=...`（`claude setup-token` 產生），或掛載 `-v <檔案>:/home/node/.claude/.credentials.json` |
-| codex | `-e CODEX_API_KEY=...`，或掛載 `-v <檔案>:/home/node/.codex/auth.json`（`codex login` 產生） |
-| gemini | `-e GEMINI_API_KEY=...` |
+   claude 也可改用 `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` 產生）或 `ANTHROPIC_API_KEY`，codex 可改用 `CODEX_API_KEY`，加在 `docker-compose.yml` 的 `environment` 即可。
 
-掛載憑證檔時建議掛載複本，CLI 更新 token 時會寫回該檔。
+3. 啟動：`docker compose up -d --build`，服務監聽 `127.0.0.1:8080`。切換 agent 時修改 `.env` 的 `AGENT` 後執行 `docker compose up -d`。
 
 ### Skills
 
-`/skills` 下每個子資料夾即一個 skill，內含 `SKILL.md`（YAML frontmatter 的 `name`、`description` 加上說明內容）：
+`skills/` 會掛載至容器的 `/skills`，每個子資料夾即一個 skill，內含 `SKILL.md`（YAML frontmatter 的 `name`、`description` 加上說明內容）：
 
 ```text
 skills/
@@ -38,7 +36,7 @@ skills/
     └── SKILL.md
 ```
 
-容器內 `/skills` 已連結至該 agent 讀取 skills 的位置（claude：`~/.claude/skills`、codex：`~/.agents/skills`、gemini：`~/.gemini/skills`），agent 依 `description` 自動判斷何時使用。
+容器內 `/skills` 已連結至三個 agent 讀取 skills 的位置（claude：`~/.claude/skills`、codex：`~/.agents/skills`、gemini：`~/.gemini/skills`），agent 依 `description` 自動判斷何時使用。新增或修改 skill 後重新送出請求即生效。
 
 ## 本機直接執行
 
@@ -54,14 +52,25 @@ AGENT=claude API_TOKEN=請換成隨機長字串 go run .
 `POST /v1/ask`
 
 ```sh
+# 開新對話（不帶 session_id）
 curl -H "Authorization: Bearer $API_TOKEN" \
-  -d '{"prompt":"用一句話解釋 Go 的 context"}' \
+  -d '{"prompt":"記住數字 7"}' \
   http://127.0.0.1:8080/v1/ask
+# → {"session_id":"PWDYQBUCBFBGTMSZF5KVZQGIO4","output":"好的"}
+
+# 接續同一段對話
+curl -H "Authorization: Bearer $API_TOKEN" \
+  -d '{"session_id":"PWDYQBUCBFBGTMSZF5KVZQGIO4","prompt":"剛剛的數字是？"}' \
+  http://127.0.0.1:8080/v1/ask
+# → {"session_id":"PWDYQBUCBFBGTMSZF5KVZQGIO4","output":"7"}
 ```
 
-Request：`{"prompt":"..."}`，prompt 不可為空，Body 上限 1 MB。
+| Request 欄位 | 說明 |
+| --- | --- |
+| `prompt` | 必填，不可為空，Body 上限 1 MB |
+| `session_id` | 選填。不帶時開新對話；帶入先前回傳的值則接續該對話 |
 
-成功回應 `200`：`{"output":"..."}`
+成功回應 `200`：`{"session_id":"...","output":"..."}`
 
 錯誤回應格式為 `{"error":"..."}`：
 
@@ -69,12 +78,18 @@ Request：`{"prompt":"..."}`，prompt 不可為空，Body 上限 1 MB。
 | --- | --- |
 | 400 | JSON 格式錯誤、prompt 為空 |
 | 401 | Bearer token 缺少或錯誤 |
-| 502 | agent 執行失敗，訊息附上 agent 的 stderr |
-| 504 | agent 執行超過 5 分鐘 |
+| 404 | `session_id` 不存在或已閒置關閉，請不帶 `session_id` 開新對話 |
+| 502 | agent 啟動或執行失敗，該 session 隨之關閉 |
+| 504 | 單次回答超過 5 分鐘，該 session 隨之關閉 |
 
-## 執行方式與安全性
+## Session 運作方式
 
-- 每個請求啟動一次 agent CLI 的非互動模式，prompt 經由 stdin 傳入：`claude -p`、`codex exec -`、`gemini --skip-trust -p " "`。每個請求都是獨立對話。
-- 用戶端中斷連線時，對應的 agent 程序會一併終止。
+- 每個 session 對應一個常駐的 agent 程序，同一 session 的後續提問直接送入該程序，省去每次啟動 CLI 的時間並保留對話記憶。
+- 同一 session 的請求依序處理，一次一個；不同 session 可同時進行。
+- session 在 `IDLE_TIMEOUT`（預設 10 分鐘）內沒有新提問即關閉並結束 agent 程序。
+- 各 agent 的常駐模式：claude `-p --input-format stream-json`、codex `app-server`、gemini `--acp`。
+
+## 安全性
+
 - 持有 `API_TOKEN` 的呼叫端等同可操作 agent，agent 讀得到容器內的檔案（包含掛載的憑證），請只把 token 交給可信任的系統。
-- 權限：claude、gemini 沿用 CLI 預設權限（需核准的工具操作會被拒絕）。codex 在容器內以 `sandbox_mode = "danger-full-access"` 執行，由容器負責隔離，因為 codex 的 bubblewrap 沙箱在 Docker 預設 seccomp 下無法建立 namespace；本機直接執行時維持 codex 預設的唯讀沙箱。
+- 權限：claude 沿用 CLI 預設權限（需核准的工具操作會被拒絕），gemini 的工具核准請求一律拒絕。codex 在容器內以 `sandbox_mode = "danger-full-access"` 執行，由容器負責隔離，因為 codex 的 bubblewrap 沙箱在 Docker 預設 seccomp 下無法建立 namespace；本機直接執行時維持 codex 預設的唯讀沙箱。
