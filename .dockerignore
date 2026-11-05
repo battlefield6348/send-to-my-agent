@@ -1,2 +1,5 @@
 .git
 *.md
+.env
+secrets/
+skills/
