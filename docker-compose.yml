@@ -13,4 +13,4 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     volumes:
       - ./skills:/skills:ro
-      - ./secrets:/secrets
+      - ./secrets:/secrets:ro

@@ -21,16 +21,17 @@ RUN mkdir -p /skills /secrets /home/node/workspace \
  && ln -s /skills /home/node/.claude/skills \
  && ln -s /skills /home/node/.agents/skills \
  && ln -s /skills /home/node/.gemini/skills \
- && ln -s /secrets/claude-credentials.json /home/node/.claude/.credentials.json \
- && ln -s /secrets/codex-auth.json /home/node/.codex/auth.json \
  # codex's bubblewrap sandbox cannot create namespaces under Docker's default seccomp, so the container is the sandbox.
  && echo 'sandbox_mode = "danger-full-access"' > /home/node/.codex/config.toml \
- && chown -R node:node /home/node /secrets
+ && chown -R node:node /home/node
 
 COPY --from=build /agentapi /usr/local/bin/agentapi
+COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 
-ENV ADDR=0.0.0.0:8080
-USER node
+# The entrypoint starts as root to copy credentials, then drops to node; HOME must point at node's config.
+ENV ADDR=0.0.0.0:8080 \
+    HOME=/home/node
 WORKDIR /home/node/workspace
 EXPOSE 8080
+ENTRYPOINT ["entrypoint.sh"]
 CMD ["agentapi"]

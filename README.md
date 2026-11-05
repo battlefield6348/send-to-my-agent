@@ -13,14 +13,16 @@
    GEMINI_API_KEY=         # AGENT=gemini 時填入
    ```
 
-2. 依 `AGENT` 放入對應的登入憑證（建議使用複本，CLI 更新 token 時會寫回該檔）：
+2. 依 `AGENT` 放入對應的登入憑證：
 
    ```sh
    mkdir -p secrets && chmod 700 secrets
-   cp ~/.claude/.credentials.json secrets/claude-credentials.json   # AGENT=claude
-   cp ~/.codex/auth.json secrets/codex-auth.json                    # AGENT=codex
-   chmod 600 secrets/*
+   cp ~/.claude/.credentials.json secrets/   # AGENT=claude
+   cp ~/.codex/auth.json secrets/            # AGENT=codex
+   chmod 600 secrets/.credentials.json secrets/auth.json
    ```
+
+   `secrets/` 以唯讀掛載，檔案擁有者不限。容器啟動時會把憑證複製給容器內的 `node` 使用者，執行期間更新的 token 只存在容器內；容器重建後若出現「Not logged in」，請重新複製主機上最新的憑證。
 
    claude 也可改用 `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` 產生）或 `ANTHROPIC_API_KEY`，codex 可改用 `CODEX_API_KEY`，加在 `docker-compose.yml` 的 `environment` 即可。
 
