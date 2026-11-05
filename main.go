@@ -12,17 +12,21 @@ func main() {
 	if token == "" {
 		log.Fatal("API_TOKEN is required: this API lets callers drive AI agents on this host")
 	}
+	agentCommand, err := agentCommandFor(os.Getenv("AGENT"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		addr = "127.0.0.1:8080"
 	}
 
 	s := &server{
-		token:         token,
-		agentCommands: defaultAgentCommands,
-		timeout:       5 * time.Minute,
+		token:        token,
+		agentCommand: agentCommand,
+		timeout:      5 * time.Minute,
 	}
-	log.Printf("listening on %s", addr)
+	log.Printf("agent %s listening on %s", agentCommand[0], addr)
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           s.routes(),

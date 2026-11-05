@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"strings"
@@ -22,19 +23,25 @@ var defaultAgentCommands = map[string][]string{
 	"gemini": {"gemini", "--skip-trust", "-p", " "},
 }
 
+func agentCommandFor(agentName string) ([]string, error) {
+	command, isKnownAgent := defaultAgentCommands[agentName]
+	if !isKnownAgent {
+		return nil, fmt.Errorf("AGENT must be one of claude, codex, gemini; got %q", agentName)
+	}
+	return command, nil
+}
+
 type server struct {
-	token         string
-	agentCommands map[string][]string
-	timeout       time.Duration
+	token        string
+	agentCommand []string
+	timeout      time.Duration
 }
 
 type askRequest struct {
-	Agent  string `json:"agent"`
 	Prompt string `json:"prompt"`
 }
 
 type askResponse struct {
-	Agent  string `json:"agent"`
 	Output string `json:"output"`
 }
 
@@ -56,11 +63,6 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return
 	}
-	command, isKnownAgent := s.agentCommands[req.Agent]
-	if !isKnownAgent {
-		writeError(w, http.StatusBadRequest, "unknown agent: "+req.Agent)
-		return
-	}
 	if strings.TrimSpace(req.Prompt) == "" {
 		writeError(w, http.StatusBadRequest, "prompt is required")
 		return
@@ -71,7 +73,7 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	cmd := exec.CommandContext(ctx, s.agentCommand[0], s.agentCommand[1:]...)
 	cmd.Stdin = strings.NewReader(req.Prompt)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -88,10 +90,7 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, askResponse{
-		Agent:  req.Agent,
-		Output: strings.TrimSpace(stdout.String()),
-	})
+	writeJSON(w, http.StatusOK, askResponse{Output: strings.TrimSpace(stdout.String())})
 }
 
 func (s *server) isAuthorized(r *http.Request) bool {
