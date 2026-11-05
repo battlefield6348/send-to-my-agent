@@ -40,6 +40,8 @@ skills/
 
 容器內 `/skills` 已連結至三個 agent 讀取 skills 的位置（claude：`~/.claude/skills`、codex：`~/.agents/skills`、gemini：`~/.gemini/skills`），agent 依 `description` 自動判斷何時使用。新增或修改 skill 後重新送出請求即生效。
 
+只有 `skills/secret-word` 範例會納入 git，其他 skill 資料夾已被忽略。skill 需要的環境變數（例如 API token）寫在 `.env`，並在 git-ignored 的 `docker-compose.override.yml` 傳入容器，Docker Compose 會自動合併。
+
 ## 本機直接執行
 
 ```sh
@@ -94,4 +96,4 @@ curl -H "Authorization: Bearer $API_TOKEN" \
 ## 安全性
 
 - 持有 `API_TOKEN` 的呼叫端等同可操作 agent，agent 讀得到容器內的檔案（包含掛載的憑證），請只把 token 交給可信任的系統。
-- 權限：claude 沿用 CLI 預設權限（需核准的工具操作會被拒絕），gemini 的工具核准請求一律拒絕。codex 在容器內以 `sandbox_mode = "danger-full-access"` 執行，由容器負責隔離，因為 codex 的 bubblewrap 沙箱在 Docker 預設 seccomp 下無法建立 namespace；本機直接執行時維持 codex 預設的唯讀沙箱。
+- 權限：claude 沿用 CLI 預設權限（需核准的工具操作會被拒絕），但預先允許 `node /skills/*`，讓 skill 附帶的腳本可以執行（skill 的 `allowed-tools` 在此模式下會導致 skill 載入失敗，請勿使用），gemini 的工具核准請求一律拒絕。codex 在容器內以 `sandbox_mode = "danger-full-access"` 執行，由容器負責隔離，因為 codex 的 bubblewrap 沙箱在 Docker 預設 seccomp 下無法建立 namespace；本機直接執行時維持 codex 預設的唯讀沙箱。

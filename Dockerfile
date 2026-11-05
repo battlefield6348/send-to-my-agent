@@ -23,6 +23,8 @@ RUN mkdir -p /skills /secrets /home/node/workspace \
  && ln -s /skills /home/node/.gemini/skills \
  # codex's bubblewrap sandbox cannot create namespaces under Docker's default seccomp, so the container is the sandbox.
  && echo 'sandbox_mode = "danger-full-access"' > /home/node/.codex/config.toml \
+ # claude refuses unapproved commands in -p mode, so pre-approve node scripts shipped in the mounted skills.
+ && echo '{"permissions":{"allow":["Bash(node /skills/*)"]}}' > /home/node/.claude/settings.json \
  && chown -R node:node /home/node
 
 COPY --from=build /agentapi /usr/local/bin/agentapi
