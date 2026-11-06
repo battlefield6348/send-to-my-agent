@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/battlefield6348/send-to-my-agent/internal/agent"
+	"github.com/battlefield6348/send-to-my-agent/internal/server"
 )
 
 func main() {
@@ -14,7 +17,7 @@ func main() {
 		log.Fatal("API_TOKEN is required: this API lets callers drive AI agents on this host")
 	}
 	agentName := os.Getenv("AGENT")
-	agent, err := agentDefinitionFor(agentName)
+	definition, err := agent.Lookup(agentName)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,14 +30,9 @@ func main() {
 		addr = "127.0.0.1:8080"
 	}
 
-	s := &server{
-		token:    token,
-		sessions: newSessionManager(idleTimeout, agent.start),
-		timeout:  5 * time.Minute,
-	}
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           s.routes(),
+		Handler:           server.New(token, idleTimeout, 5*time.Minute, definition.Start),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	log.Printf("agent %s listening on %s, idle sessions close after %s", agentName, addr, idleTimeout)

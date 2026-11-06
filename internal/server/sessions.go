@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/battlefield6348/send-to-my-agent/internal/agent"
 )
 
 var errSessionNotFound = errors.New("session not found or expired")
@@ -13,7 +15,7 @@ var errSessionNotFound = errors.New("session not found or expired")
 // sessionManager keeps one live agent conversation per session and closes it after idleTimeout without asks.
 type sessionManager struct {
 	idleTimeout       time.Duration
-	startConversation func(ctx context.Context) (agentConversation, error)
+	startConversation func(ctx context.Context) (agent.Conversation, error)
 
 	mu       sync.Mutex
 	sessions map[string]*session
@@ -24,13 +26,13 @@ type session struct {
 
 	// mu serializes turns because an agent process answers one prompt at a time.
 	mu           sync.Mutex
-	conversation agentConversation
+	conversation agent.Conversation
 	lastUsed     time.Time
 	closed       bool
 	idleTimer    *time.Timer
 }
 
-func newSessionManager(idleTimeout time.Duration, startConversation func(ctx context.Context) (agentConversation, error)) *sessionManager {
+func newSessionManager(idleTimeout time.Duration, startConversation func(ctx context.Context) (agent.Conversation, error)) *sessionManager {
 	return &sessionManager{
 		idleTimeout:       idleTimeout,
 		startConversation: startConversation,

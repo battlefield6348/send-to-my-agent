@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"bufio"
@@ -28,23 +28,23 @@ func TestMain(m *testing.M) {
 	os.Exit(0)
 }
 
-func startFakeAgent(t *testing.T, agentName string) agentConversation {
+func startFakeAgent(t *testing.T, agentName string) Conversation {
 	t.Helper()
 	t.Setenv("FAKE_AGENT", agentName)
-	definition := agentDefinition{
+	definition := Definition{
 		command: []string{os.Args[0]},
-		connect: agentDefinitions[agentName].connect,
+		connect: definitions[agentName].connect,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conversation, err := definition.start(ctx)
+	conversation, err := definition.Start(ctx)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conversation.Close() })
 	return conversation
 }
 
-func askFake(t *testing.T, conversation agentConversation, prompt string) (string, error) {
+func askFake(t *testing.T, conversation Conversation, prompt string) (string, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -99,14 +99,14 @@ func TestAgentConversationHonorsContextCancel(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-func TestAgentDefinitionForName(t *testing.T) {
-	definition, err := agentDefinitionFor("claude")
+func TestLookup(t *testing.T) {
+	definition, err := Lookup("claude")
 	require.NoError(t, err)
 	assert.Equal(t, "claude", definition.command[0])
 
-	_, err = agentDefinitionFor("")
+	_, err = Lookup("")
 	assert.Error(t, err)
-	_, err = agentDefinitionFor("nope")
+	_, err = Lookup("nope")
 	assert.Error(t, err)
 }
 

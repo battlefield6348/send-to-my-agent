@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/battlefield6348/send-to-my-agent/internal/agent"
 )
 
 const maxRequestBytes = 1 << 20
@@ -26,6 +28,16 @@ type askRequest struct {
 type askResponse struct {
 	SessionID string `json:"session_id"`
 	Output    string `json:"output"`
+}
+
+// New returns the HTTP API; each new session starts its own conversation with startConversation.
+func New(token string, idleTimeout, askTimeout time.Duration, startConversation func(ctx context.Context) (agent.Conversation, error)) http.Handler {
+	s := &server{
+		token:    token,
+		sessions: newSessionManager(idleTimeout, startConversation),
+		timeout:  askTimeout,
+	}
+	return s.routes()
 }
 
 func (s *server) routes() http.Handler {

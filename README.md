@@ -58,10 +58,21 @@ skills/
 
 只有 `skills/secret-word` 範例會納入 git，其他 skill 資料夾已被忽略。skill 需要的環境變數（例如 API token）寫在 `.env`，並在 git-ignored 的 `docker-compose.override.yml` 傳入容器，Docker Compose 會自動合併。
 
+## 專案結構
+
+```text
+cmd/agentapi/      進入點：讀環境變數並啟動 HTTP 服務
+internal/server/   HTTP API（驗證、錯誤碼）與 session 管理
+internal/agent/    啟動 agent CLI，並以各自協定（stream-json、JSON-RPC、ACP）透過 stdin/stdout 對話
+entrypoint.sh      容器啟動：準備 ~/.claude、複製憑證、切換為 node 使用者
+```
+
+新增 agent 只需在 `internal/agent/agent.go` 的 `definitions` 加一筆，並實作對應的 `connect` 函式。
+
 ## 本機直接執行
 
 ```sh
-AGENT=claude API_TOKEN=請換成隨機長字串 go run .
+AGENT=claude API_TOKEN=請換成隨機長字串 go run ./cmd/agentapi
 # 預設監聽 127.0.0.1:8080，可用 ADDR 調整
 ```
 

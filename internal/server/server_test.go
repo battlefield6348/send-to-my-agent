@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/battlefield6348/send-to-my-agent/internal/agent"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,7 +77,7 @@ func newHarness(idleTimeout time.Duration) *testHarness {
 	h.server = &server{
 		token:   testToken,
 		timeout: 200 * time.Millisecond,
-		sessions: newSessionManager(idleTimeout, func(ctx context.Context) (agentConversation, error) {
+		sessions: newSessionManager(idleTimeout, func(ctx context.Context) (agent.Conversation, error) {
 			h.mu.Lock()
 			defer h.mu.Unlock()
 			if h.startErr != nil {

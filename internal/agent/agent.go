@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"context"
@@ -8,18 +8,18 @@ import (
 	"strings"
 )
 
-// agentConversation is one live agent process holding one conversation; Ask is called one turn at a time.
-type agentConversation interface {
+// Conversation is one live agent process holding one conversation; Ask is called one turn at a time.
+type Conversation interface {
 	Ask(ctx context.Context, prompt string) (string, error)
 	Close() error
 }
 
-type agentDefinition struct {
+type Definition struct {
 	command []string
-	connect func(ctx context.Context, process *lineProcess) (agentConversation, error)
+	connect func(ctx context.Context, process *lineProcess) (Conversation, error)
 }
 
-var agentDefinitions = map[string]agentDefinition{
+var definitions = map[string]Definition{
 	"claude": {
 		command: []string{"claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"},
 		connect: connectClaude,
@@ -34,15 +34,15 @@ var agentDefinitions = map[string]agentDefinition{
 	},
 }
 
-func agentDefinitionFor(agentName string) (agentDefinition, error) {
-	definition, isKnownAgent := agentDefinitions[agentName]
+func Lookup(agentName string) (Definition, error) {
+	definition, isKnownAgent := definitions[agentName]
 	if !isKnownAgent {
-		return agentDefinition{}, fmt.Errorf("AGENT must be one of claude, codex, gemini; got %q", agentName)
+		return Definition{}, fmt.Errorf("AGENT must be one of claude, codex, gemini; got %q", agentName)
 	}
 	return definition, nil
 }
 
-func (d agentDefinition) start(ctx context.Context) (agentConversation, error) {
+func (d Definition) Start(ctx context.Context) (Conversation, error) {
 	process, err := startLineProcess(d.command)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ type claudeConversation struct {
 	*lineProcess
 }
 
-func connectClaude(_ context.Context, process *lineProcess) (agentConversation, error) {
+func connectClaude(_ context.Context, process *lineProcess) (Conversation, error) {
 	return claudeConversation{process}, nil
 }
 
@@ -100,7 +100,7 @@ type codexConversation struct {
 	threadID string
 }
 
-func connectCodex(ctx context.Context, process *lineProcess) (agentConversation, error) {
+func connectCodex(ctx context.Context, process *lineProcess) (Conversation, error) {
 	rpc := &rpcConn{process: process, answerAgentRequest: declineAgentRequest}
 
 	clientInfo := map[string]any{"name": "send-to-my-agent", "version": "0.1.0"}
@@ -192,7 +192,7 @@ type geminiConversation struct {
 	sessionID string
 }
 
-func connectGemini(ctx context.Context, process *lineProcess) (agentConversation, error) {
+func connectGemini(ctx context.Context, process *lineProcess) (Conversation, error) {
 	rpc := &rpcConn{process: process, answerAgentRequest: answerGeminiRequest}
 
 	// Advertising no fs capability makes gemini read files itself instead of asking us.
