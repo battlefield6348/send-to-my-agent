@@ -67,7 +67,7 @@ internal/agent/    啟動 agent CLI，並以各自協定（stream-json、JSON-RP
 entrypoint.sh      容器啟動：準備 ~/.claude、複製憑證、切換為 node 使用者
 ```
 
-新增 agent 只需在 `internal/agent/agent.go` 的 `definitions` 加一筆，並實作對應的 `connect` 函式。
+新增 agent 只需在 `internal/agent/agent.go` 的 `definitions` 加一筆，並實作對應的 `connect` 函式。運作原理請見 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
 ## 本機直接執行
 
