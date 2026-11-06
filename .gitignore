@@ -4,3 +4,4 @@ secrets/
 skills/*
 !skills/secret-word/
 docker-compose.override.yml
+.claude/

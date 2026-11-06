@@ -22,9 +22,25 @@
    chmod 600 secrets/.credentials.json secrets/auth.json
    ```
 
-   `secrets/` 以唯讀掛載，檔案擁有者不限。容器啟動時會把憑證複製給容器內的 `node` 使用者，執行期間更新的 token 只存在容器內；容器重建後若出現「Not logged in」，請重新複製主機上最新的憑證。
+   `secrets/` 以唯讀掛載，檔案擁有者不限。容器啟動時會把憑證複製給容器內的 `node` 使用者，執行期間更新的 token 只存在容器內；容器內已有憑證時不會再複製；容器重建後若出現「Not logged in」，請重新複製主機上最新的憑證。
 
    claude 也可改用 `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token` 產生）或 `ANTHROPIC_API_KEY`，codex 可改用 `CODEX_API_KEY`，加在 `docker-compose.yml` 的 `environment` 即可。
+
+   複製進來的 claude 憑證與主機共用同一組 token，主機刷新後容器內的會失效（「OAuth session expired」）。要讓容器自己維持登入，可在 `docker-compose.override.yml` 把只給本服務使用的主機資料夾掛到 `/home/node/.claude`，再於容器內登入一次：
+
+   ```yaml
+   services:
+     agent-api:
+       volumes:
+         - /path/to/send-to-my-agent-claude:/home/node/.claude
+   ```
+
+   ```sh
+   docker compose up -d
+   docker compose exec -u node agent-api claude   # 輸入 /login，依畫面網址授權後貼回驗證碼
+   ```
+
+   容器啟動時會將該資料夾擁有者改為 `node`，並建立 skills 連結與 `settings.json`（每次啟動覆寫）。已存在的 `.credentials.json` 不會被 `secrets/` 覆蓋，所以此資料夾不要與其他服務或主機共用。
 
 3. 啟動：`docker compose up -d --build`，服務監聽 `127.0.0.1:8080`。切換 agent 時修改 `.env` 的 `AGENT` 後執行 `docker compose up -d`。
 
